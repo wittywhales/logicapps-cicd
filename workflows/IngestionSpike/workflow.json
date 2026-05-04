@@ -1,0 +1,311 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "Recurrence_Daily_0800UTC": {
+                "type": "Recurrence",
+                "recurrence": {
+                    "frequency": "Day",
+                    "interval": 1,
+                    "schedule": {
+                        "hours": [
+                            "8"
+                        ],
+                        "minutes": [
+                            "0"
+                        ]
+                    },
+                    "timeZone": "UTC"
+                }
+            }
+        },
+        "actions": {
+            "Run_Spike_Detection_Query": {
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "referenceName": "azuremonitorlogs"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let LookBackDays     = 30;\nlet AnomalyThreshold = 3.0;\nlet MinQtyGB         = 2.0;\nlet MinPctIncrease   = 20;\nlet MinAbsoluteSpikeGB = 4.0;\nlet TargetDay        = ago(1d);\nUsage\n| where TimeGenerated > startofday(ago(LookBackDays * 1d))\n| where StartTime > startofday(ago(LookBackDays * 1d))\n| where IsBillable\n| make-series\n    DailyGB = sum(Quantity) / 1.0E3\n    on TimeGenerated\n    from startofday(ago(LookBackDays * 1d)) to endofday(TargetDay)\n    step 1d\n    by DataType\n| extend\n    (AnomalyFlags, AnomalyScore, Baseline) =\n        series_decompose_anomalies(DailyGB, AnomalyThreshold, 7, 'linefit', 1, 'ctukey', 0.6)\n| extend\n    TodayGB       = todouble(DailyGB[-1]),\n    TodayBaseline = todouble(Baseline[-1]),\n    TodayScore    = todouble(AnomalyScore[-1]),\n    TodayFlag     = toint(AnomalyFlags[-1])\n| where TodayFlag == 1\n| where TodayGB >= MinQtyGB\n| extend\n    DeltaGB      = round(TodayGB - TodayBaseline, 3),\n    PctAboveBase = round((TodayGB - TodayBaseline) / TodayBaseline * 100, 1)\n| where PctAboveBase >= MinPctIncrease\n| where DeltaGB >= MinAbsoluteSpikeGB\n| project\n    Table            = DataType,\n    SpikeDay         = format_datetime(endofday(TargetDay), 'yyyy-MM-dd'),\n    ActualGB         = round(TodayGB, 3),\n    BaselineGB       = round(TodayBaseline, 3),\n    ExcessGB         = DeltaGB,\n    PctAboveBaseline = strcat(tostring(PctAboveBase), \"%\"),\n    AnomalyScore     = round(TodayScore, 2)\n| order by AnomalyScore desc\n",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "@parameters('la_subscriptionId')",
+                        "resourcegroups": "@parameters('la_resourceGroup')",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "@parameters('la_workspaceName')",
+                        "timerange": "Set in query"
+                    }
+                },
+                "runAfter": {}
+            },
+            "Condition_Has_Spikes": {
+                "type": "If",
+                "expression": {
+                    "and": [
+                        {
+                            "greater": [
+                                "@length(body('Run_Spike_Detection_Query')?['value'])",
+                                0
+                            ]
+                        }
+                    ]
+                },
+                "actions": {
+                    "For_Each_Spiking_Table": {
+                        "type": "Foreach",
+                        "foreach": "@body('Run_Spike_Detection_Query')?['value']",
+                        "actions": {
+                            "Append_Summary_Row": {
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "htmlSummaryTable",
+                                    "value": "<tr bgcolor=\"@{if(greaterOrEquals(float(items('For_Each_Spiking_Table')?['ExcessGB']), 50), '#fde8e8', if(greaterOrEquals(float(items('For_Each_Spiking_Table')?['ExcessGB']), 10), '#fff3e0', '#fffde7'))}\"><td style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;font-weight:bold;\">@{items('For_Each_Spiking_Table')?['Table']}</td><td align=\"center\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;\">@{items('For_Each_Spiking_Table')?['SpikeDay']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;\">@{items('For_Each_Spiking_Table')?['ActualGB']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;\">@{items('For_Each_Spiking_Table')?['BaselineGB']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;font-weight:bold;\">@{items('For_Each_Spiking_Table')?['ExcessGB']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;\">@{items('For_Each_Spiking_Table')?['PctAboveBaseline']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:13px;\">@{items('For_Each_Spiking_Table')?['AnomalyScore']}</td></tr>"
+                                }
+                            },
+                            "Increment_Total_ExcessGB": {
+                                "type": "IncrementVariable",
+                                "inputs": {
+                                    "name": "totalExcessGB",
+                                    "value": "@float(items('For_Each_Spiking_Table')?['ExcessGB'])"
+                                },
+                                "runAfter": {
+                                    "Append_Summary_Row": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            },
+                            "Compose_DrillDown_Query": {
+                                "type": "Compose",
+                                "inputs": "@replace(variables('drillDownQueryTemplate'), 'FunctionAppLogs', items('For_Each_Spiking_Table')?['Table'])",
+                                "runAfter": {
+                                    "Increment_Total_ExcessGB": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            },
+                            "Run_Resource_DrillDown_Query": {
+                                "type": "ApiConnection",
+                                "inputs": {
+                                    "host": {
+                                        "connection": {
+                                            "referenceName": "azuremonitorlogs"
+                                        }
+                                    },
+                                    "method": "post",
+                                    "body": "@{outputs('Compose_DrillDown_Query')}",
+                                    "path": "/queryData",
+                                    "queries": {
+                                        "subscriptions": "@parameters('la_subscriptionId')",
+                                        "resourcegroups": "@parameters('la_resourceGroup')",
+                                        "resourcetype": "Log Analytics Workspace",
+                                        "resourcename": "@parameters('la_workspaceName')",
+                                        "timerange": "Set in query"
+                                    }
+                                },
+                                "runAfter": {
+                                    "Compose_DrillDown_Query": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            },
+                            "Append_Resource_Section_Header": {
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "htmlResourceDetails",
+                                    "value": "<div style=\"margin-top:16px;\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tbody><tr><td bgcolor=\"#1565c0\" style=\"background-color:#1565c0;color:#fff;padding:7px 12px;border-radius:4px 4px 0 0;font-size:13px;font-weight:bold;\">@{items('For_Each_Spiking_Table')?['Table']} &mdash; @{items('For_Each_Spiking_Table')?['ExcessGB']} GB excess (@{items('For_Each_Spiking_Table')?['PctAboveBaseline']} above baseline)</td></tr></tbody></table><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse;border:1px solid #ddd;\"><thead><tr bgcolor=\"#e3f2fd\"><th align=\"left\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">Resource Name</th><th align=\"left\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">Resource Type</th><th align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">Ingested GB</th><th align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">Record Count</th><th align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">% of Total</th></tr></thead><tbody>"
+                                },
+                                "runAfter": {
+                                    "Run_Resource_DrillDown_Query": [
+                                        "Succeeded",
+                                        "Failed"
+                                    ]
+                                }
+                            },
+                            "Condition_DrillDown_Has_Results": {
+                                "type": "If",
+                                "expression": {
+                                    "and": [
+                                        {
+                                            "equals": [
+                                                "@actions('Run_Resource_DrillDown_Query')?['status']",
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        {
+                                            "greater": [
+                                                "@length(body('Run_Resource_DrillDown_Query')?['value'])",
+                                                0
+                                            ]
+                                        }
+                                    ]
+                                },
+                                "actions": {
+                                    "For_Each_Resource": {
+                                        "type": "Foreach",
+                                        "foreach": "@body('Run_Resource_DrillDown_Query')?['value']",
+                                        "actions": {
+                                            "Append_Resource_Row": {
+                                                "type": "AppendToStringVariable",
+                                                "inputs": {
+                                                    "name": "htmlResourceDetails",
+                                                    "value": "<tr><td style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;font-weight:bold;\">@{items('For_Each_Resource')?['ResourceName']}</td><td style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;color:#555;\">@{items('For_Each_Resource')?['ResourceType']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">@{items('For_Each_Resource')?['IngestedGB']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;\">@{items('For_Each_Resource')?['RecordCount']}</td><td align=\"right\" style=\"padding:5px 8px;border:1px solid #ddd;font-size:12px;font-weight:bold;\">@{items('For_Each_Resource')?['PercentOfTotal']}%</td></tr>"
+                                                }
+                                            }
+                                        },
+                                        "runtimeConfiguration": {
+                                            "concurrency": {
+                                                "repetitions": 1
+                                            }
+                                        }
+                                    }
+                                },
+                                "else": {
+                                    "actions": {
+                                        "Append_No_Data_Message": {
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "htmlResourceDetails",
+                                                "value": "<tr><td colspan=\"5\" style=\"padding:10px 8px;border:1px solid #ddd;font-size:12px;text-align:center;color:#888;font-style:italic;\">No resource-level data available. The table may not contain _ResourceId or the drill-down query timed out.</td></tr>"
+                                            }
+                                        }
+                                    }
+                                },
+                                "runAfter": {
+                                    "Append_Resource_Section_Header": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            },
+                            "Append_Resource_Section_Close": {
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "htmlResourceDetails",
+                                    "value": "</tbody></table></div>"
+                                },
+                                "runAfter": {
+                                    "Condition_DrillDown_Has_Results": [
+                                        "Succeeded"
+                                    ]
+                                }
+                            }
+                        },
+                        "runtimeConfiguration": {
+                            "concurrency": {
+                                "repetitions": 1
+                            }
+                        }
+                    },
+                    "Compose_Full_Email": {
+                        "type": "Compose",
+                        "inputs": "<html lang=\"en\"><head><title></title><style></style></head><body style=\"width:100%;margin:0;padding:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#333;background-color:#f6f6f6;\"><table class=\"body-wrap\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;background-color:#f6f6f6;margin:0;\"><tbody><tr><td valign=\"top\"></td><td class=\"container\" width=\"1000\" valign=\"top\" style=\"display:block !important;max-width:1000px !important;clear:both !important;margin:0 auto;\"><div style=\"max-width:1000px;display:block;margin:0 auto;padding:20px;\"><table class=\"main\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-radius:3px;background-color:#fff;margin:0;border:1px solid #e9e9e9;\"><tbody><tr><td align=\"center\" valign=\"top\" bgcolor=\"#dc3545\" style=\"font-size:16px;vertical-align:top;color:#fff;font-weight:500;text-align:center;border-radius:3px 3px 0 0;background-color:#dc3545;margin:0;padding:20px;\"><span style=\"font-size:32px;margin-top:10px;display:block;\">LAW Ingestion Spike Alert</span><br><span style=\"margin-top:10px;display:block;\">Spike Day: @{body('Run_Spike_Detection_Query')?['value'][0]?['SpikeDay']}</span><br><span style=\"margin-top:4px;display:block;font-size:13px;opacity:0.9;\">Workspace: @{parameters('la_workspaceName')}</span></td></tr><tr><td class=\"content-wrap\" valign=\"top\" style=\"vertical-align:top;margin:0;padding:20px;\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0;\"><tbody><tr><td style=\"padding:0 0 14px;\">Dear Recipients,</td></tr><tr><td style=\"padding:0 0 18px;\">A log ingestion spike has been detected in your Log Analytics Workspace. Please review the top resources which have sudden ingestion spikes listed below.</td></tr><tr><td style=\"padding:0 0 18px;\"><a href=\"@{parameters('logAnalyticsBaseUrl')}\" style=\"color:#1565c0;font-weight:bold;\">View in Log Analytics</a></td></tr><tr><td style=\"padding:0 0 8px;font-weight:bold;\">Spike Summary:</td></tr><tr><td style=\"padding:0 0 20px;\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border-collapse:collapse;\"><thead><tr bgcolor=\"#f5f5f5\"><th align=\"left\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Table</th><th align=\"center\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Spike Day</th><th align=\"right\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Actual GB</th><th align=\"right\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Baseline GB</th><th align=\"right\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Excess GB</th><th align=\"right\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">% Above</th><th align=\"right\" style=\"padding:6px 8px;border:1px solid #ddd;font-size:12px;\">Anomaly Score</th></tr></thead><tbody>@{variables('htmlSummaryTable')}</tbody></table></td></tr><tr><td style=\"padding:0 0 8px;font-weight:bold;\">Resource Drill-Down (Top 5 per Table):</td></tr><tr><td style=\"padding:0 0 20px;\">@{variables('htmlResourceDetails')}</td></tr><tr><td style=\"padding:20px 0 0;\">Regards,<br>Public Cloud Service - Azure,<br>Novartis DDIT IES Cloud &amp; Infra. Services</td></tr></tbody></table></td></tr></tbody></table><div style=\"width:100%;clear:both;color:#999;margin:0;padding:20px;\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:0;\"><tbody><tr><td align=\"center\" style=\"font-size:11px;vertical-align:top;color:#999;text-align:center;padding:0 0 20px;\">Please note: This is an automated email message and replies are not monitored.</td></tr></tbody></table></div></div></td><td valign=\"top\"></td></tr></tbody></table></body></html>",
+                        "runAfter": {
+                            "For_Each_Spiking_Table": [
+                                "Succeeded"
+                            ]
+                        }
+                    },
+                    "Send_Alert_Email": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "referenceName": "office365"
+                                }
+                            },
+                            "method": "post",
+                            "body": {
+                                "To": "@parameters('alertEmailRecipients')",
+                                "Subject": "LAW Ingestion Spike Alert | @{formatNumber(variables('totalExcessGB'), '0')} GB excess | @{body('Run_Spike_Detection_Query')?['value'][0]?['SpikeDay']}",
+                                "Body": "@{outputs('Compose_Full_Email')}",
+                                "Importance": "High",
+                                "IsHtml": true
+                            },
+                            "path": "/v2/Mail"
+                        },
+                        "runAfter": {
+                            "Compose_Full_Email": [
+                                "Succeeded"
+                            ]
+                        }
+                    }
+                },
+                "else": {
+                    "actions": {}
+                },
+                "runAfter": {
+                    "Initialize_logAnalyticsUrl": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Initialize_logAnalyticsUrl": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "htmlSummaryTable",
+                            "type": "string",
+                            "value": ""
+                        },
+                        {
+                            "name": "htmlResourceDetails",
+                            "type": "string",
+                            "value": ""
+                        },
+                        {
+                            "name": "totalExcessGB",
+                            "type": "float",
+                            "value": 0
+                        },
+                        {
+                            "name": "drillDownQueryTemplate",
+                            "type": "string",
+                            "value": "let AnalysisDay = startofday(ago(1d));\nlet DrillDownData = materialize(\n    FunctionAppLogs\n    | where TimeGenerated between (AnalysisDay .. (AnalysisDay + 1d))\n    | extend ResourceId = iff(isnotempty(_ResourceId), _ResourceId, \"Unknown\")\n    | summarize\n        IngestedGB = round(sum(_BilledSize) / 1.0E9, 3),\n        RecordCount = count()\n        by ResourceId\n);\nlet TotalIngestedGB = toscalar(DrillDownData | summarize sum(IngestedGB));\nDrillDownData\n| top 5 by IngestedGB desc\n| parse tolower(ResourceId) with * \"/providers/\" Provider \"/\" ResourceType \"/\" ResourceName\n| extend ResourceName = iff(ResourceId == \"Unknown\", \"Unknown\", tostring(split(ResourceName, \"/\")[0]))\n| extend ResourceType = iff(ResourceId == \"Unknown\", \"Unknown\", strcat(Provider, \"/\", ResourceType))\n| extend PercentOfTotal = round(IngestedGB / TotalIngestedGB * 100, 1)\n| project ResourceName, ResourceType, IngestedGB, RecordCount, PercentOfTotal, ResourceId\n| order by IngestedGB desc"
+                        },
+                        {
+                            "name": "logAnalyticsUrl",
+                            "type": "string",
+                            "value": "@parameters('logAnalyticsBaseUrl')"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Run_Spike_Detection_Query": [
+                        "Succeeded"
+                    ]
+                }
+            }
+        },
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            },
+            "la_subscriptionId": {
+                "defaultValue": "",
+                "type": "String"
+            },
+            "la_resourceGroup": {
+                "defaultValue": "",
+                "type": "String"
+            },
+            "la_workspaceName": {
+                "defaultValue": "",
+                "type": "String"
+            },
+            "alertEmailRecipients": {
+                "defaultValue": "",
+                "type": "String"
+            },
+            "logAnalyticsBaseUrl": {
+                "defaultValue": "",
+                "type": "String"
+            }
+        }
+    },
+    "kind": "Stateful"
+}

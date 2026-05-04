@@ -1,0 +1,65 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "Http",
+        "inputs": {
+          "method": "GET"
+        }
+      }
+    },
+    "actions": {
+      "Send_Test_Email": {
+        "type": "ApiConnection",
+        "inputs": {
+          "host": {
+            "connection": {
+              "referenceName": "office365"
+            }
+          },
+          "method": "post",
+          "body": {
+            "To": "sravya_reddyvari@epam.com",
+            "Subject": "HealthCheck - Office 365 Connection Test [@{utcNow()}]",
+            "Body": "<p>This is a test email sent from the <strong>HealthCheck</strong> workflow to verify the Office 365 connection is working correctly.</p><p>Timestamp: @{utcNow()}</p><p>Logic App: la-ingestionspike-local</p>",
+            "IsHtml": true
+          },
+          "path": "/v2/Mail"
+        },
+        "runAfter": {}
+      },
+      "Response": {
+        "type": "Response",
+        "inputs": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "status": "healthy",
+            "timestamp": "@{utcNow()}",
+            "workflowName": "HealthCheck",
+            "emailSent": true,
+            "emailTo": "sravya_reddyvari@epam.com"
+          }
+        },
+        "runAfter": {
+          "Send_Test_Email": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      }
+    },
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      }
+    }
+  },
+  "kind": "Stateless"
+}

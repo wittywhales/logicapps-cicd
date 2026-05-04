@@ -1,0 +1,26 @@
+# Terraform state — contains storage account keys and secrets
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan output
+tfplan
+*.tfplan
+
+# Zip artifacts — generated at deploy time
+*.zip
+
+# Local environment overrides — not for shared source control
+**/environments/local.tfvars
+
+# Event logs and debug artifacts
+*.xml
+
+# Claude / AI tool local settings
+.claude/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/

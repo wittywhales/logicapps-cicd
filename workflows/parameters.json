@@ -1,0 +1,22 @@
+{
+  "la_subscriptionId": {
+    "type": "String",
+    "value": "@appsetting('LA_TARGET_SUBSCRIPTION_ID')"
+  },
+  "la_resourceGroup": {
+    "type": "String",
+    "value": "@appsetting('LA_TARGET_RESOURCE_GROUP')"
+  },
+  "la_workspaceName": {
+    "type": "String",
+    "value": "@appsetting('LA_TARGET_WORKSPACE_NAME')"
+  },
+  "alertEmailRecipients": {
+    "type": "String",
+    "value": "@appsetting('ALERT_EMAIL_RECIPIENTS')"
+  },
+  "logAnalyticsBaseUrl": {
+    "type": "String",
+    "value": "@appsetting('LOG_ANALYTICS_PORTAL_URL')"
+  }
+}

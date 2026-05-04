@@ -1,0 +1,114 @@
+# ---------------------------------------------------------------------------
+# Reusable template: Sync connection runtime URLs + zip-deploy workflows
+# ---------------------------------------------------------------------------
+parameters:
+  - name: logicAppName
+    type: string
+  - name: resourceGroupName
+    type: string
+  - name: azureSubscription
+    type: string
+    default: 'TF-SPN-ADO'
+  - name: workflowsPath
+    type: string
+    default: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/workflows'
+
+steps:
+  # ----------------------------------------------------------------
+  # Step 1 — Sync connection runtime URLs from Azure into app settings.
+  #          Office 365 requires a one-time OAuth authorization in the
+  #          Azure Portal. Azure Monitor Logs uses runtime Managed Identity,
+  #          but still needs its runtime URL captured after connection creation.
+  # ----------------------------------------------------------------
+  - task: AzureCLI@2
+    displayName: 'Sync Connection Runtime URLs'
+    inputs:
+      azureSubscription: ${{ parameters.azureSubscription }}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        set -euo pipefail
+
+        RG="${{ parameters.resourceGroupName }}"
+        APP="${{ parameters.logicAppName }}"
+
+        echo "--- Retrieving connection names from app settings ---"
+        MONITOR_CONN_ID=$(az functionapp config appsettings list \
+          --name "$APP" --resource-group "$RG" \
+          --query "[?name=='AZUREMONITORLOGS_CONNECTION_ID'].value" -o tsv)
+
+        OFFICE_CONN_ID=$(az functionapp config appsettings list \
+          --name "$APP" --resource-group "$RG" \
+          --query "[?name=='OFFICE365_CONNECTION_ID'].value" -o tsv)
+
+        # Helper: fetch connectionRuntimeUrl from a connection resource ID
+        get_runtime_url() {
+          local CONN_ID="$1"
+          if [ -z "$CONN_ID" ]; then echo ""; return; fi
+          az rest --method get \
+            --uri "${CONN_ID}?api-version=2018-07-01-preview" \
+            --query "properties.connectionRuntimeUrl" -o tsv 2>/dev/null || echo ""
+        }
+
+        MONITOR_URL=$(get_runtime_url "$MONITOR_CONN_ID")
+        OFFICE_URL=$(get_runtime_url "$OFFICE_CONN_ID")
+
+        SETTINGS=""
+        if [ -n "$MONITOR_URL" ]; then
+          SETTINGS="$SETTINGS AZUREMONITORLOGS_CONNECTION_RUNTIMEURL=$MONITOR_URL"
+          echo "✓ Azure Monitor Logs runtime URL retrieved"
+        else
+          echo "⚠ Azure Monitor Logs runtime URL unavailable"
+        fi
+
+        if [ -n "$OFFICE_URL" ]; then
+          SETTINGS="$SETTINGS OFFICE365_CONNECTION_RUNTIMEURL=$OFFICE_URL"
+          echo "✓ Office 365 runtime URL retrieved"
+        else
+          echo "⚠ Office 365 connection not yet authorized — runtime URL unavailable"
+        fi
+
+        if [ -n "$SETTINGS" ]; then
+          echo "--- Updating app settings ---"
+          az functionapp config appsettings set \
+            --name "$APP" --resource-group "$RG" \
+            --settings $SETTINGS --output none
+          echo "✓ App settings updated"
+        else
+          echo "⚠ No runtime URLs to update. If Office 365 is new, authorize it in the Azure Portal first."
+        fi
+
+  # ----------------------------------------------------------------
+  # Step 2 — Zip the workflows directory
+  # ----------------------------------------------------------------
+  - task: AzureCLI@2
+    displayName: 'Package Workflows'
+    inputs:
+      azureSubscription: ${{ parameters.azureSubscription }}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        set -euo pipefail
+        WORKFLOWS_DIR="${{ parameters.workflowsPath }}"
+        ZIP_PATH="$(Build.ArtifactStagingDirectory)/workflows.zip"
+
+        echo "--- Creating workflow zip from $WORKFLOWS_DIR ---"
+        cd "$WORKFLOWS_DIR"
+        zip -r "$ZIP_PATH" . \
+          -x "local.settings.json" \
+          -x ".vscode/*" \
+          -x "workflow-designtime/*" \
+          -x "*.bak"
+        echo "✓ Created $ZIP_PATH"
+
+  # ----------------------------------------------------------------
+  # Step 3 — Deploy via zip deploy (same mechanism as Azure Functions)
+  # ----------------------------------------------------------------
+  - task: AzureFunctionApp@1
+    displayName: 'Deploy Workflows to Logic App'
+    inputs:
+      azureSubscription: ${{ parameters.azureSubscription }}
+      appType: 'functionApp'
+      appName: ${{ parameters.logicAppName }}
+      package: '$(Build.ArtifactStagingDirectory)/workflows.zip'
+      deploymentMethod: 'zipDeploy'

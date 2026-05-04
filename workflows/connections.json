@@ -1,0 +1,37 @@
+{
+  "managedApiConnections": {
+    "azuremonitorlogs": {
+      "api": {
+        "id": "@appsetting('AZUREMONITORLOGS_API_ID')"
+      },
+      "connection": {
+        "id": "@appsetting('AZUREMONITORLOGS_CONNECTION_ID')"
+      },
+      "connectionRuntimeUrl": "@appsetting('AZUREMONITORLOGS_CONNECTION_RUNTIMEURL')",
+      "connectionProperties": {
+        "authentication": {
+          "additionalAudiences": [
+            "https://api.loganalytics.io"
+          ],
+          "audience": "https://management.core.windows.net/",
+          "type": "ManagedServiceIdentity"
+        }
+      },
+      "authentication": {
+        "type": "ManagedServiceIdentity"
+      }
+    },
+    "office365": {
+      "api": {
+        "id": "@appsetting('OFFICE365_API_ID')"
+      },
+      "connection": {
+        "id": "@appsetting('OFFICE365_CONNECTION_ID')"
+      },
+      "connectionRuntimeUrl": "@appsetting('OFFICE365_CONNECTION_RUNTIMEURL')",
+      "authentication": {
+        "type": "ManagedServiceIdentity"
+      }
+    }
+  }
+}

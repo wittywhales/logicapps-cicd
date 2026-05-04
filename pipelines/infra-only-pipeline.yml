@@ -1,0 +1,83 @@
+# ===========================================================================
+# Infrastructure-Only Pipeline — Terraform Plan + Apply (no workflow deploy)
+#
+# Use this when you only need to change infrastructure (add connections,
+# update app settings, scale the plan, etc.) without redeploying workflows.
+# ===========================================================================
+trigger: none   # manual trigger only
+
+pool:
+  vmImage: ubuntu-latest
+
+resources:
+  repositories:
+    - repository: common-templates
+      type: git
+      name: Terraform/common-templates
+      ref: refs/heads/main
+
+variables:
+  - group: Terraform-SP-Auth
+  - name: workingDirectory
+    value: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/infrastructure'
+  - name: environment
+    value: 'dev'
+  - name: stateKey
+    value: 'logicapp-$(environment).tfstate'
+
+stages:
+  - stage: Plan
+    displayName: 'Terraform Plan'
+    jobs:
+      - job: Plan
+        displayName: 'Init & Plan'
+        steps:
+          - template: templates/terraform-steps.yml
+            parameters:
+              workingDirectory: '$(workingDirectory)'
+              environment: '$(environment)'
+              backendKey: '$(stateKey)'
+
+  - stage: Apply
+    displayName: 'Terraform Apply'
+    dependsOn: Plan
+    jobs:
+      - deployment: ApplyTerraform
+        displayName: 'Apply Infrastructure'
+        environment: '$(environment)'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - checkout: common-templates
+
+                - template: install_terraform.yml@common-templates
+                  parameters:
+                    terraformVersion: '1.14.8'
+
+                - template: init_terraform.yml@common-templates
+                  parameters:
+                    workingDirectory: '$(workingDirectory)'
+                    backendKey: '$(stateKey)'
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: 'Download TF Plan'
+                  inputs:
+                    buildType: 'current'
+                    artifactName: 'tfplan-$(environment)'
+                    targetPath: '$(workingDirectory)'
+
+                - task: AzureCLI@2
+                  displayName: 'Terraform Apply'
+                  inputs:
+                    azureSubscription: 'TF-SPN-ADO'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: 'terraform apply -auto-approve tfplan'
+                    workingDirectory: '$(workingDirectory)'
+                  env:
+                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                    ARM_TENANT_ID: $(ARM_TENANT_ID)
