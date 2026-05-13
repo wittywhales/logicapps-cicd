@@ -5,7 +5,7 @@ terraform {
       version = "~> 3.0"
     }
   }
-#   backend "azurerm" {}
+  #   backend "azurerm" {}
 }
 
 provider "azurerm" {
@@ -116,11 +116,17 @@ resource "azurerm_logic_app_standard" "this" {
     "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.this.connection_string
 
     # --- Managed API Connections: Azure Monitor Logs ---
+    # connectionRuntimeUrl is captured from ARM reference() at deploy time —
+    # no pipeline step or ignore_changes needed for this connection.
     "AZUREMONITORLOGS_API_ID"                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Web/locations/${var.location}/managedApis/azuremonitorlogs"
     "AZUREMONITORLOGS_CONNECTION_ID"         = local.connection_outputs.azuremonitorlogsConnectionId.value
-    "AZUREMONITORLOGS_CONNECTION_RUNTIMEURL" = ""
+    "AZUREMONITORLOGS_CONNECTION_RUNTIMEURL" = local.connection_outputs.azuremonitorlogsConnectionRuntimeUrl.value
 
     # --- Managed API Connections: Office 365 ---
+    # connectionRuntimeUrl is only available after manual OAuth consent in the
+    # Azure Portal. Terraform deliberately sets this to "" on first deploy.
+    # The pipeline "Sync Connection Runtime URLs" step writes the real value
+    # post-consent, and ignore_changes prevents Terraform from reverting it.
     "OFFICE365_API_ID"                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Web/locations/${var.location}/managedApis/office365"
     "OFFICE365_CONNECTION_ID"         = local.connection_outputs.office365ConnectionId.value
     "OFFICE365_CONNECTION_RUNTIMEURL" = ""
@@ -134,15 +140,13 @@ resource "azurerm_logic_app_standard" "this" {
     "ENVIRONMENT"               = var.environment
   }
 
-  # connectionRuntimeUrl values are set by the pipeline after manual
-  # OAuth consent — prevent Terraform from reverting them on next apply.
+  # Only Office 365 requires post-OAuth URL injection by the pipeline.
+  # Azure Monitor Logs is now fully managed by Terraform.
   lifecycle {
     ignore_changes = [
-      app_settings["AZUREMONITORLOGS_CONNECTION_RUNTIMEURL"],
       app_settings["OFFICE365_CONNECTION_RUNTIMEURL"],
     ]
   }
-
   tags = {
     environment = var.environment
   }

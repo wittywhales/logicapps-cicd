@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Reusable template: Terraform init with AzureRM backend
+#
+# Required variable group values (Terraform-SP-Auth):
+#   TF_BACKEND_RESOURCE_GROUP    — resource group holding the state storage account
+#   TF_BACKEND_STORAGE_ACCOUNT   — storage account name
+#   TF_BACKEND_CONTAINER         — blob container name (e.g. tfstate)
+# ---------------------------------------------------------------------------
+parameters:
+  - name: workingDirectory
+    type: string
+  - name: backendKey
+    type: string
+  - name: azureSubscription
+    type: string
+    default: 'TF-SPN-ADO'
+
+steps:
+  - task: AzureCLI@2
+    displayName: 'Terraform Init'
+    inputs:
+      azureSubscription: ${{ parameters.azureSubscription }}
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        terraform init \
+          -backend-config="resource_group_name=$(TF_BACKEND_RESOURCE_GROUP)" \
+          -backend-config="storage_account_name=$(TF_BACKEND_STORAGE_ACCOUNT)" \
+          -backend-config="container_name=$(TF_BACKEND_CONTAINER)" \
+          -backend-config="key=${{ parameters.backendKey }}"
+      workingDirectory: ${{ parameters.workingDirectory }}
+    env:
+      ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+      ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+      ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+      ARM_TENANT_ID: $(ARM_TENANT_ID)

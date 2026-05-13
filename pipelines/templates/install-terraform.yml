@@ -1,0 +1,13 @@
+# ---------------------------------------------------------------------------
+# Reusable template: Install Terraform at a pinned version
+# ---------------------------------------------------------------------------
+parameters:
+  - name: terraformVersion
+    type: string
+    default: '1.14.8'
+
+steps:
+  - task: TerraformInstaller@1
+    displayName: 'Install Terraform ${{ parameters.terraformVersion }}'
+    inputs:
+      terraformVersion: ${{ parameters.terraformVersion }}

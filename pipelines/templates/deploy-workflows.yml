@@ -15,13 +15,18 @@ parameters:
 
 steps:
   # ----------------------------------------------------------------
-  # Step 1 — Sync connection runtime URLs from Azure into app settings.
-  #          Office 365 requires a one-time OAuth authorization in the
-  #          Azure Portal. Azure Monitor Logs uses runtime Managed Identity,
-  #          but still needs its runtime URL captured after connection creation.
+  # Step 1 — Sync Office 365 connection runtime URL post-OAuth consent.
+  #
+  #   Azure Monitor Logs (MI auth): runtime URL is captured by Terraform
+  #   at infrastructure deploy time — NO pipeline step needed.
+  #
+  #   Office 365 (OAuth): requires one-time manual consent in the Azure
+  #   Portal before the runtime URL becomes usable. This step fetches
+  #   it from Azure and writes it to app settings. It is a no-op if
+  #   the connection has not yet been authorized (warns and skips).
   # ----------------------------------------------------------------
   - task: AzureCLI@2
-    displayName: 'Sync Connection Runtime URLs'
+    displayName: 'Sync Office 365 Connection Runtime URL (post-OAuth)'
     inputs:
       azureSubscription: ${{ parameters.azureSubscription }}
       scriptType: 'bash'
@@ -32,52 +37,29 @@ steps:
         RG="${{ parameters.resourceGroupName }}"
         APP="${{ parameters.logicAppName }}"
 
-        echo "--- Retrieving connection names from app settings ---"
-        MONITOR_CONN_ID=$(az functionapp config appsettings list \
-          --name "$APP" --resource-group "$RG" \
-          --query "[?name=='AZUREMONITORLOGS_CONNECTION_ID'].value" -o tsv)
-
+        echo "--- Retrieving Office 365 connection ID from app settings ---"
         OFFICE_CONN_ID=$(az functionapp config appsettings list \
           --name "$APP" --resource-group "$RG" \
           --query "[?name=='OFFICE365_CONNECTION_ID'].value" -o tsv)
 
-        # Helper: fetch connectionRuntimeUrl from a connection resource ID
-        get_runtime_url() {
-          local CONN_ID="$1"
-          if [ -z "$CONN_ID" ]; then echo ""; return; fi
-          az rest --method get \
-            --uri "${CONN_ID}?api-version=2018-07-01-preview" \
-            --query "properties.connectionRuntimeUrl" -o tsv 2>/dev/null || echo ""
-        }
-
-        MONITOR_URL=$(get_runtime_url "$MONITOR_CONN_ID")
-        OFFICE_URL=$(get_runtime_url "$OFFICE_CONN_ID")
-
-        SETTINGS=""
-        if [ -n "$MONITOR_URL" ]; then
-          SETTINGS="$SETTINGS AZUREMONITORLOGS_CONNECTION_RUNTIMEURL=$MONITOR_URL"
-          echo "✓ Azure Monitor Logs runtime URL retrieved"
-        else
-          echo "⚠ Azure Monitor Logs runtime URL unavailable"
+        if [ -z "$OFFICE_CONN_ID" ]; then
+          echo "⚠ OFFICE365_CONNECTION_ID not found in app settings — skipping."
+          exit 0
         fi
+
+        OFFICE_URL=$(az rest --method get \
+          --uri "${OFFICE_CONN_ID}?api-version=2018-07-01-preview" \
+          --query "properties.connectionRuntimeUrl" -o tsv 2>/dev/null || echo "")
 
         if [ -n "$OFFICE_URL" ]; then
-          SETTINGS="$SETTINGS OFFICE365_CONNECTION_RUNTIMEURL=$OFFICE_URL"
-          echo "✓ Office 365 runtime URL retrieved"
-        else
-          echo "⚠ Office 365 connection not yet authorized — runtime URL unavailable"
-        fi
-
-        if [ -n "$SETTINGS" ]; then
-          echo "--- Updating app settings ---"
           az functionapp config appsettings set \
             --name "$APP" --resource-group "$RG" \
-            --settings $SETTINGS --output none
-          echo "✓ App settings updated"
+            --settings "OFFICE365_CONNECTION_RUNTIMEURL=$OFFICE_URL" --output none
+          echo "✓ Office 365 runtime URL updated"
         else
-          echo "⚠ No runtime URLs to update. If Office 365 is new, authorize it in the Azure Portal first."
+          echo "⚠ Office 365 connection not yet authorized — runtime URL unavailable."
+          echo "  Complete OAuth consent at: https://portal.azure.com → API Connections → $APP-office365-v2 → Edit API connection → Authorize"
         fi
-
   # ----------------------------------------------------------------
   # Step 2 — Zip the workflows directory
   # ----------------------------------------------------------------

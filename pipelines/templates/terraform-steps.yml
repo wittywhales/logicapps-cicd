@@ -15,13 +15,12 @@ parameters:
 
 steps:
   - checkout: self
-  - checkout: common-templates
 
-  - template: install_terraform.yml@common-templates
+  - template: install-terraform.yml
     parameters:
       terraformVersion: ${{ parameters.terraformVersion }}
 
-  - template: init_terraform.yml@common-templates
+  - template: init-terraform.yml
     parameters:
       workingDirectory: ${{ parameters.workingDirectory }}
       backendKey: ${{ parameters.backendKey }}

@@ -27,7 +27,10 @@ output "azuremonitorlogs_connection_name" {
   description = "Name of the Azure Monitor Logs API connection"
   value       = local.connection_outputs.azuremonitorlogsConnectionName.value
 }
-
+output "azuremonitorlogs_connection_runtime_url" {
+  description = "Runtime URL of the Azure Monitor Logs API connection (Managed Identity — available immediately)"
+  value       = local.connection_outputs.azuremonitorlogsConnectionRuntimeUrl.value
+}
 output "office365_connection_id" {
   description = "Resource ID of the Office 365 API connection"
   value       = local.connection_outputs.office365ConnectionId.value

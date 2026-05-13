@@ -16,13 +16,6 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
-resources:
-  repositories:
-    - repository: common-templates
-      type: git
-      name: Terraform/common-templates
-      ref: refs/heads/main
-
 variables:
   - group: Terraform-SP-Auth
   - name: workingDirectory
@@ -66,13 +59,12 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                - checkout: common-templates
 
-                - template: install_terraform.yml@common-templates
+                - template: templates/install-terraform.yml
                   parameters:
                     terraformVersion: '1.14.8'
 
-                - template: init_terraform.yml@common-templates
+                - template: templates/init-terraform.yml
                   parameters:
                     workingDirectory: '$(workingDirectory)'
                     backendKey: '$(stateKey)'
