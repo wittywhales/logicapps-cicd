@@ -110,6 +110,7 @@ resource "azurerm_logic_app_standard" "this" {
     # --- Runtime ---
     "FUNCTIONS_WORKER_RUNTIME"     = "dotnet"
     "WEBSITE_NODE_DEFAULT_VERSION" = "~18"
+    "NETFRAMEWORK_VERSION"         = "v8.0"
 
     # --- Observability ---
     "APPINSIGHTS_INSTRUMENTATIONKEY"        = azurerm_application_insights.this.instrumentation_key
