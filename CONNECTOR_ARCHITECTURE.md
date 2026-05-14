@@ -239,7 +239,7 @@ function until consent is completed.
 |---|---|---|
 | Connection resource (`kind: V2`, `parameterValueSet`) | `connections.tf` | Creates the connector instance; declares that MSI auth is used for the connection |
 | Access policy | `connections.tf` | Authorises the Logic App's MSI to use the connection (hop 1 gate) |
-| `connectionRuntimeUrl` app setting | set by pipeline, excluded from Terraform | The address the Logic App calls; stable after connection creation |
+| `connectionRuntimeUrl` app setting | `main.tf` ← `connections.tf` ARM output | The address the Logic App calls; assigned by Azure at connection creation, available immediately in Terraform output for both MSI and OAuth connections |
 | `connectionProperties.authentication` | `connections.json` | Tells the API hub what token(s) to acquire for the backend (hop 2) |
 | Top-level `authentication` | `connections.json` | Tells the Logic App runtime how to authenticate to the API hub (hop 1) |
 | RBAC role assignment | `main.tf` | Grants the MSI permission on the backend resource (hop 2 authorisation) |

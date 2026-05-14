@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Reusable template: Sync connection runtime URLs + zip-deploy workflows
+# Reusable template: Zip-deploy workflows to Logic App Standard
 # ---------------------------------------------------------------------------
 parameters:
   - name: logicAppName
@@ -15,53 +15,7 @@ parameters:
 
 steps:
   # ----------------------------------------------------------------
-  # Step 1 — Sync Office 365 connection runtime URL post-OAuth consent.
-  #
-  #   Azure Monitor Logs (MI auth): runtime URL is captured by Terraform
-  #   at infrastructure deploy time — NO pipeline step needed.
-  #
-  #   Office 365 (OAuth): requires one-time manual consent in the Azure
-  #   Portal before the runtime URL becomes usable. This step fetches
-  #   it from Azure and writes it to app settings. It is a no-op if
-  #   the connection has not yet been authorized (warns and skips).
-  # ----------------------------------------------------------------
-  - task: AzureCLI@2
-    displayName: 'Sync Office 365 Connection Runtime URL (post-OAuth)'
-    inputs:
-      azureSubscription: ${{ parameters.azureSubscription }}
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        set -euo pipefail
-
-        RG="${{ parameters.resourceGroupName }}"
-        APP="${{ parameters.logicAppName }}"
-
-        echo "--- Retrieving Office 365 connection ID from app settings ---"
-        OFFICE_CONN_ID=$(az functionapp config appsettings list \
-          --name "$APP" --resource-group "$RG" \
-          --query "[?name=='OFFICE365_CONNECTION_ID'].value" -o tsv)
-
-        if [ -z "$OFFICE_CONN_ID" ]; then
-          echo "⚠ OFFICE365_CONNECTION_ID not found in app settings — skipping."
-          exit 0
-        fi
-
-        OFFICE_URL=$(az rest --method get \
-          --uri "${OFFICE_CONN_ID}?api-version=2018-07-01-preview" \
-          --query "properties.connectionRuntimeUrl" -o tsv 2>/dev/null || echo "")
-
-        if [ -n "$OFFICE_URL" ]; then
-          az functionapp config appsettings set \
-            --name "$APP" --resource-group "$RG" \
-            --settings "OFFICE365_CONNECTION_RUNTIMEURL=$OFFICE_URL" --output none
-          echo "✓ Office 365 runtime URL updated"
-        else
-          echo "⚠ Office 365 connection not yet authorized — runtime URL unavailable."
-          echo "  Complete OAuth consent at: https://portal.azure.com → API Connections → $APP-office365-v2 → Edit API connection → Authorize"
-        fi
-  # ----------------------------------------------------------------
-  # Step 2 — Zip the workflows directory
+  # Step 1 — Zip the workflows directory
   # ----------------------------------------------------------------
   - task: AzureCLI@2
     displayName: 'Package Workflows'
@@ -84,7 +38,7 @@ steps:
         echo "✓ Created $ZIP_PATH"
 
   # ----------------------------------------------------------------
-  # Step 3 — Deploy via zip deploy (same mechanism as Azure Functions)
+  # Step 2 — Deploy via zip deploy (same mechanism as Azure Functions)
   # ----------------------------------------------------------------
   - task: AzureFunctionApp@1
     displayName: 'Deploy Workflows to Logic App'

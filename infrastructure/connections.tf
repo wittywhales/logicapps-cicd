@@ -6,11 +6,11 @@
 # Runtime authentication is then controlled from workflows/connections.json.
 #
 # connectionRuntimeUrl handling:
-#   azuremonitorlogs — Managed Identity auth: URL is assigned at creation,
-#                      captured via ARM reference() and managed by Terraform.
-#   office365        — OAuth auth: URL only becomes meaningful after manual
-#                      OAuth consent in the Azure Portal. Terraform intentionally
-#                      leaves this blank and the pipeline syncs it post-consent.
+#   Both azuremonitorlogs and office365 V2 connections get a connectionRuntimeUrl
+#   assigned by Azure at creation time, regardless of auth state. Both URLs are
+#   captured via ARM reference() and written to app settings by Terraform.
+#   OAuth consent for office365 is still required to make the connection
+#   functional, but the URL itself is available immediately.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -102,6 +102,10 @@ resource "azurerm_resource_group_template_deployment" "connections" {
         "office365ConnectionName": {
           "type": "String",
           "value": "[variables('office365Name')]"
+        },
+        "office365ConnectionRuntimeUrl": {
+          "type": "String",
+          "value": "[reference(variables('office365Name'), '2018-07-01-preview').connectionRuntimeUrl]"
         }
       }
     }

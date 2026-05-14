@@ -124,13 +124,12 @@ resource "azurerm_logic_app_standard" "this" {
     "AZUREMONITORLOGS_CONNECTION_RUNTIMEURL" = local.connection_outputs.azuremonitorlogsConnectionRuntimeUrl.value
 
     # --- Managed API Connections: Office 365 ---
-    # connectionRuntimeUrl is only available after manual OAuth consent in the
-    # Azure Portal. Terraform deliberately sets this to "" on first deploy.
-    # The pipeline "Sync Connection Runtime URLs" step writes the real value
-    # post-consent, and ignore_changes prevents Terraform from reverting it.
+    # connectionRuntimeUrl is assigned by Azure at connection creation time,
+    # available immediately in the ARM output. OAuth consent in the portal
+    # is required to make the connection functional, but not to get the URL.
     "OFFICE365_API_ID"                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Web/locations/${var.location}/managedApis/office365"
     "OFFICE365_CONNECTION_ID"         = local.connection_outputs.office365ConnectionId.value
-    "OFFICE365_CONNECTION_RUNTIMEURL" = ""
+    "OFFICE365_CONNECTION_RUNTIMEURL" = local.connection_outputs.office365ConnectionRuntimeUrl.value
 
     # --- Workflow Configuration ---
     "LA_TARGET_SUBSCRIPTION_ID" = var.la_target_subscription_id
@@ -141,13 +140,6 @@ resource "azurerm_logic_app_standard" "this" {
     "ENVIRONMENT"               = var.environment
   }
 
-  # Only Office 365 requires post-OAuth URL injection by the pipeline.
-  # Azure Monitor Logs is now fully managed by Terraform.
-  lifecycle {
-    ignore_changes = [
-      app_settings["OFFICE365_CONNECTION_RUNTIMEURL"],
-    ]
-  }
   tags = {
     environment = var.environment
   }

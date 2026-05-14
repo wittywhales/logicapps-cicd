@@ -253,10 +253,10 @@ Environment-specific values live in `infrastructure/environments/*.tfvars`:
 |---|---|---|---|
 | `connections.json` | `AZUREMONITORLOGS_API_ID` | `@appsetting()` | `main.tf → app_settings` |
 | `connections.json` | `AZUREMONITORLOGS_CONNECTION_ID` | `@appsetting()` | `main.tf` ← `connections.tf` output |
-| `connections.json` | `AZUREMONITORLOGS_CONNECTION_RUNTIMEURL` | `@appsetting()` | Pipeline `deploy-workflows.yml` |
+| `connections.json` | `AZUREMONITORLOGS_CONNECTION_RUNTIMEURL` | `@appsetting()` | `main.tf` ← `connections.tf` output |
 | `connections.json` | `OFFICE365_API_ID` | `@appsetting()` | `main.tf → app_settings` |
 | `connections.json` | `OFFICE365_CONNECTION_ID` | `@appsetting()` | `main.tf` ← `connections.tf` output |
-| `connections.json` | `OFFICE365_CONNECTION_RUNTIMEURL` | `@appsetting()` | Pipeline `deploy-workflows.yml` |
+| `connections.json` | `OFFICE365_CONNECTION_RUNTIMEURL` | `@appsetting()` | `main.tf` ← `connections.tf` output (authorize in portal post-deploy to enable sending) |
 | `parameters.json` | `LA_TARGET_SUBSCRIPTION_ID` | `@appsetting()` | `main.tf` ← `variables.tf` ← `.tfvars` |
 | `parameters.json` | `LA_TARGET_RESOURCE_GROUP` | `@appsetting()` | `main.tf` ← `variables.tf` ← `.tfvars` |
 | `parameters.json` | `LA_TARGET_WORKSPACE_NAME` | `@appsetting()` | `main.tf` ← `variables.tf` ← `.tfvars` |
