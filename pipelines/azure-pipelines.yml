@@ -19,9 +19,9 @@ pool:
 variables:
   - group: Terraform-SP-Auth
   - name: workingDirectory
-    value: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/infrastructure'
+    value: '$(System.DefaultWorkingDirectory)/infrastructure'
   - name: workflowsPath
-    value: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/workflows'
+    value: '$(System.DefaultWorkingDirectory)/workflows'
   # ---- Change per environment ----
   - name: environment
     value: 'dev'

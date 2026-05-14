@@ -12,7 +12,7 @@ pool:
 variables:
   - group: Terraform-SP-Auth
   - name: workingDirectory
-    value: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/infrastructure'
+    value: '$(System.DefaultWorkingDirectory)/infrastructure'
   - name: environment
     value: 'dev'
   - name: stateKey
