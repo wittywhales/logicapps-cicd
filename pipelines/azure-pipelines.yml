@@ -14,7 +14,7 @@ trigger:
       - Terraform/logicapps/**
 
 pool:
-  vmImage: ubuntu-latest
+  name: selfhosted
 
 variables:
   - group: Terraform-SP-Auth

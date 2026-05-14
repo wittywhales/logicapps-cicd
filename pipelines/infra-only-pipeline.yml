@@ -7,7 +7,7 @@
 trigger: none   # manual trigger only
 
 pool:
-  vmImage: ubuntu-latest
+  name: selfhosted
 
 variables:
   - group: Terraform-SP-Auth
