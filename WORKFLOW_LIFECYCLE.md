@@ -26,8 +26,8 @@ flowchart LR
     end
 
     subgraph PROD["☁️ PROD — Live"]
-        p1(["terraform apply\ninfra + connections\n+ zip deploy"])
-        p2(["Manual Approval\nGate"])
+        p1(["Manual Approval\nGate"])
+        p2(["terraform apply\ninfra + connections\n+ zip deploy"])
         p3(["Authorize OAuth\nconnections\nif new connector"])
         p1 --> p2 --> p3
     end
