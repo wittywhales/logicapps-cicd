@@ -2,7 +2,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
     archive = {
       source  = "hashicorp/archive"
@@ -180,11 +180,6 @@ resource "terraform_data" "deploy_workflows" {
   depends_on = [azurerm_logic_app_standard.this]
 
   provisioner "local-exec" {
-    command = <<-EOT
-      az functionapp deployment source config-zip \
-        --name "${azurerm_logic_app_standard.this.name}" \
-        --resource-group "${azurerm_resource_group.this.name}" \
-        --src "${data.archive_file.workflows.output_path}"
-    EOT
+    command = "az functionapp deployment source config-zip --name ${azurerm_logic_app_standard.this.name} --resource-group ${azurerm_resource_group.this.name} --src ${data.archive_file.workflows.output_path}"
   }
 }
