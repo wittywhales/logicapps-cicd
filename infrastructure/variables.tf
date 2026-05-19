@@ -53,3 +53,9 @@ variable "log_analytics_portal_url" {
   type        = string
   default     = ""
 }
+
+variable "vnet_integration_subnet_id" {
+  description = "Resource ID of the delegated subnet (Microsoft.Web/serverFarms) used for Logic App Standard outbound VNet integration. When set, the subnet is also whitelisted in the storage account network rules (default_action switches to Deny). Set to null to disable VNet integration."
+  type        = string
+  default     = null
+}
