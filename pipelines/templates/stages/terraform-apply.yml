@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Stage Template: Terraform Apply
+#
+# Runs: checkout → install terraform → init → download plan → apply
+# Only executes on main branch (skipped during PR validation).
+# Approval gate is configured on the ADO environment resource.
+# ---------------------------------------------------------------------------
+parameters:
+  - name: appName
+    type: string
+  - name: azureSubscription
+    type: string
+  - name: environment
+    type: string
+  - name: terraformVersion
+    type: string
+    default: '1.14.8'
+
+stages:
+  - stage: Apply_${{ parameters.environment }}
+    displayName: 'Apply (${{ parameters.appName }} — ${{ parameters.environment }})'
+    dependsOn: Plan_${{ parameters.environment }}
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Apply
+        displayName: 'Apply Infrastructure'
+        environment: '${{ parameters.appName }}-${{ parameters.environment }}'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - template: ../install-terraform.yml
+                  parameters:
+                    terraformVersion: ${{ parameters.terraformVersion }}
+
+                - template: ../init-terraform.yml
+                  parameters:
+                    azureSubscription: ${{ parameters.azureSubscription }}
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}'
+                    backendKey: '${{ parameters.appName }}-${{ parameters.environment }}.tfstate'
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: 'Download TF Plan'
+                  inputs:
+                    buildType: 'current'
+                    artifactName: 'tfplan-${{ parameters.appName }}-${{ parameters.environment }}'
+                    targetPath: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}'
+
+                - task: AzureCLI@2
+                  displayName: 'Terraform Apply (${{ parameters.environment }})'
+                  inputs:
+                    azureSubscription: ${{ parameters.azureSubscription }}
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: 'terraform apply -auto-approve tfplan'
+                    workingDirectory: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}'

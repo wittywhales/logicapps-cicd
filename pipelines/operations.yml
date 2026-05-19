@@ -1,0 +1,62 @@
+# ===========================================================================
+# CI/CD Pipeline — Operations Logic App
+#
+# Flow:
+#   PR to main   → Plan DEV + Plan PROD (validation only, no apply)
+#   Merge to main → Plan DEV → Apply DEV (auto) → Plan PROD → Apply PROD (approval)
+# ===========================================================================
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - apps/operations/**
+      - modules/logic-app-standard/**
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - apps/operations/**
+      - modules/logic-app-standard/**
+
+pool:
+  name: selfhosted
+
+variables:
+  - name: appName
+    value: operations
+  - name: azureServiceConnection
+    value: 'TF-SPN-ADO'
+  # Backend settings only; ARM_* secrets are no longer required here.
+  - group: Terraform-SP-Auth
+
+stages:
+  # --- DEV ---
+  - template: templates/stages/terraform-plan.yml
+    parameters:
+      appName: ${{ variables.appName }}
+      azureSubscription: ${{ variables.azureServiceConnection }}
+      environment: dev
+
+  - template: templates/stages/terraform-apply.yml
+    parameters:
+      appName: ${{ variables.appName }}
+      azureSubscription: ${{ variables.azureServiceConnection }}
+      environment: dev
+
+  # --- PROD ---
+  - template: templates/stages/terraform-plan.yml
+    parameters:
+      appName: ${{ variables.appName }}
+      azureSubscription: ${{ variables.azureServiceConnection }}
+      environment: prod
+
+  - template: templates/stages/terraform-apply.yml
+    parameters:
+      appName: ${{ variables.appName }}
+      azureSubscription: ${{ variables.azureServiceConnection }}
+      environment: prod

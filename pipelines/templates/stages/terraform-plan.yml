@@ -1,0 +1,54 @@
+# ---------------------------------------------------------------------------
+# Stage Template: Terraform Plan
+#
+# Runs: checkout → install terraform → init → plan → publish artifact
+# Used for both PR validation and pre-apply planning.
+# ---------------------------------------------------------------------------
+parameters:
+  - name: appName
+    type: string
+  - name: azureSubscription
+    type: string
+  - name: environment
+    type: string
+  - name: terraformVersion
+    type: string
+    default: '1.14.8'
+
+stages:
+  - stage: Plan_${{ parameters.environment }}
+    displayName: 'Plan (${{ parameters.appName }} — ${{ parameters.environment }})'
+    jobs:
+      - job: Plan
+        displayName: 'Init & Plan'
+        steps:
+          - checkout: self
+
+          - template: ../install-terraform.yml
+            parameters:
+              terraformVersion: ${{ parameters.terraformVersion }}
+
+          - template: ../init-terraform.yml
+            parameters:
+              azureSubscription: ${{ parameters.azureSubscription }}
+              workingDirectory: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}'
+              backendKey: '${{ parameters.appName }}-${{ parameters.environment }}.tfstate'
+
+          - task: AzureCLI@2
+            displayName: 'Terraform Plan (${{ parameters.environment }})'
+            inputs:
+              azureSubscription: ${{ parameters.azureSubscription }}
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                terraform plan \
+                  -var-file=environments/${{ parameters.environment }}.tfvars \
+                  -out=tfplan
+              workingDirectory: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish TF Plan'
+            inputs:
+              artifactName: 'tfplan-${{ parameters.appName }}-${{ parameters.environment }}'
+              targetPath: '$(System.DefaultWorkingDirectory)/apps/${{ parameters.appName }}/tfplan'
+              publishLocation: 'pipeline'

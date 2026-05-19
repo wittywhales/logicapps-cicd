@@ -22,9 +22,9 @@
           },
           "method": "post",
           "body": {
-            "To": "sravya_reddyvari@epam.com",
+            "To": "@parameters('alertEmailRecipients')",
             "Subject": "HealthCheck - Office 365 Connection Test [@{utcNow()}]",
-            "Body": "<p>This is a test email sent from the <strong>HealthCheck</strong> workflow to verify the Office 365 connection is working correctly.</p><p>Timestamp: @{utcNow()}</p><p>Logic App: la-ingestionspike-local</p>",
+            "Body": "<p>This is a test email sent from the <strong>HealthCheck</strong> workflow to verify the Office 365 connection is working correctly.</p><p>Timestamp: @{utcNow()}</p><p>Logic App: @{workflow().name}</p>",
             "IsHtml": true
           },
           "path": "/v2/Mail"
@@ -42,8 +42,7 @@
             "status": "healthy",
             "timestamp": "@{utcNow()}",
             "workflowName": "HealthCheck",
-            "emailSent": true,
-            "emailTo": "sravya_reddyvari@epam.com"
+            "emailSent": true
           }
         },
         "runAfter": {
@@ -58,6 +57,10 @@
       "$connections": {
         "defaultValue": {},
         "type": "Object"
+      },
+      "alertEmailRecipients": {
+        "defaultValue": "",
+        "type": "String"
       }
     }
   },

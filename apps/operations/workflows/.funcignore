@@ -1,10 +1,7 @@
 *.js.map
 *.ts
 .git*
-.debug
 .vscode
 local.settings.json
-.funcignore
 test
-getting_started.md
 workflow-designtime

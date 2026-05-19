@@ -2,15 +2,8 @@
 # Managed API Connections — created via ARM because the azurerm provider
 # does not have a native resource for Microsoft.Web/connections.
 #
-# The connection resources are created as plain managed API connections.
-# Runtime authentication is then controlled from workflows/connections.json.
-#
-# connectionRuntimeUrl handling:
-#   Both azuremonitorlogs and office365 V2 connections get a connectionRuntimeUrl
-#   assigned by Azure at creation time, regardless of auth state. Both URLs are
-#   captured via ARM reference() and written to app settings by Terraform.
-#   OAuth consent for office365 is still required to make the connection
-#   functional, but the URL itself is available immediately.
+# connectionRuntimeUrl is captured from ARM reference() at deploy time.
+# OAuth consent for office365 must be done manually in the portal.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -19,10 +12,10 @@ locals {
   )
 }
 
-# ---- Step 1: Connection resources (no dependency on Logic App) ----
+# ---- Connection resources ----
 resource "azurerm_resource_group_template_deployment" "connections" {
   name                = "${var.logic_app_name}-connections"
-  resource_group_name = azurerm_resource_group.this.name
+  resource_group_name = module.logic_app.resource_group_name
   deployment_mode     = "Incremental"
 
   parameters_content = jsonencode({
@@ -112,21 +105,18 @@ resource "azurerm_resource_group_template_deployment" "connections" {
   TEMPLATE
 }
 
-# ---- Step 2: Access policies — grants the Logic App identity permission to
-#              call each V2 connection at runtime. Requires the Logic App's
-#              system-assigned principal_id, so this runs after main.tf. ----
+# ---- Access policies — grants the Logic App identity permission to use connections ----
 resource "azurerm_resource_group_template_deployment" "connection_access_policies" {
   name                = "${var.logic_app_name}-connection-access-policies"
-  resource_group_name = azurerm_resource_group.this.name
+  resource_group_name = module.logic_app.resource_group_name
   deployment_mode     = "Incremental"
 
-  # Explicit dependency ensures the Logic App exists before we read its identity.
-  depends_on = [azurerm_logic_app_standard.this]
+  depends_on = [module.logic_app]
 
   parameters_content = jsonencode({
     location             = { value = var.location }
-    tenantId             = { value = data.azurerm_client_config.current.tenant_id }
-    principalId          = { value = azurerm_logic_app_standard.this.identity[0].principal_id }
+    tenantId             = { value = module.logic_app.tenant_id }
+    principalId          = { value = module.logic_app.logic_app_principal_id }
     policyName           = { value = var.logic_app_name }
     azuremonitorlogsName = { value = local.connection_outputs.azuremonitorlogsConnectionName.value }
     office365Name        = { value = local.connection_outputs.office365ConnectionName.value }

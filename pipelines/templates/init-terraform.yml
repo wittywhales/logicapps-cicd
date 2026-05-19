@@ -13,7 +13,6 @@ parameters:
     type: string
   - name: azureSubscription
     type: string
-    default: 'TF-SPN-ADO'
 
 steps:
   - task: AzureCLI@2
@@ -29,8 +28,3 @@ steps:
           -backend-config="container_name=$(TF_BACKEND_CONTAINER)" \
           -backend-config="key=${{ parameters.backendKey }}"
       workingDirectory: ${{ parameters.workingDirectory }}
-    env:
-      ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-      ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-      ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-      ARM_TENANT_ID: $(ARM_TENANT_ID)
