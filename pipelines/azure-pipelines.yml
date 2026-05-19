@@ -2,8 +2,11 @@
 # Combined CI/CD Pipeline — Infrastructure (Terraform) + Workflow Deployment
 #
 # Stage 1  Terraform Plan
-# Stage 2  Terraform Apply  (with environment approval gate)
-# Stage 3  Deploy Workflows (sync connections + zip deploy)
+# Stage 2  Terraform Apply  (infra + workflow zip deploy via terraform_data)
+#
+# NOTE: Stage 3 (Deploy Workflows) has been removed. Workflow zip deploy is
+# now handled by terraform_data in infrastructure/main.tf using archive_file.
+# Stage 3 code is preserved below in comments for reference.
 # ===========================================================================
 trigger:
   branches:
@@ -20,8 +23,8 @@ variables:
   - group: Terraform-SP-Auth
   - name: workingDirectory
     value: '$(System.DefaultWorkingDirectory)/infrastructure'
-  - name: workflowsPath
-    value: '$(System.DefaultWorkingDirectory)/workflows'
+  # - name: workflowsPath                                    # no longer needed — zip deploy is done by terraform_data
+  #   value: '$(System.DefaultWorkingDirectory)/workflows'
   # ---- Change per environment ----
   - name: environment
     value: 'dev'
@@ -90,47 +93,49 @@ stages:
                     ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
                     ARM_TENANT_ID: $(ARM_TENANT_ID)
 
-                # Capture Terraform outputs for the deploy stage
-                - task: AzureCLI@2
-                  displayName: 'Export Terraform Outputs'
-                  inputs:
-                    azureSubscription: 'TF-SPN-ADO'
-                    scriptType: 'bash'
-                    scriptLocation: 'inlineScript'
-                    inlineScript: |
-                      LOGIC_APP_NAME=$(terraform output -raw logic_app_name)
-                      RESOURCE_GROUP=$(terraform output -raw resource_group_name)
-                      echo "##vso[task.setvariable variable=LOGIC_APP_NAME;isOutput=true]$LOGIC_APP_NAME"
-                      echo "##vso[task.setvariable variable=RESOURCE_GROUP_NAME;isOutput=true]$RESOURCE_GROUP"
-                    workingDirectory: '$(workingDirectory)'
-                  name: tfOutputs
-                  env:
-                    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-                    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-                    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-                    ARM_TENANT_ID: $(ARM_TENANT_ID)
+                # Capture Terraform outputs — kept for reference/debugging
+                # (Stage 3 used these; no longer needed for deployment)
+                # - task: AzureCLI@2
+                #   displayName: 'Export Terraform Outputs'
+                #   inputs:
+                #     azureSubscription: 'TF-SPN-ADO'
+                #     scriptType: 'bash'
+                #     scriptLocation: 'inlineScript'
+                #     inlineScript: |
+                #       LOGIC_APP_NAME=$(terraform output -raw logic_app_name)
+                #       RESOURCE_GROUP=$(terraform output -raw resource_group_name)
+                #       echo "##vso[task.setvariable variable=LOGIC_APP_NAME;isOutput=true]$LOGIC_APP_NAME"
+                #       echo "##vso[task.setvariable variable=RESOURCE_GROUP_NAME;isOutput=true]$RESOURCE_GROUP"
+                #     workingDirectory: '$(workingDirectory)'
+                #   name: tfOutputs
+                #   env:
+                #     ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+                #     ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+                #     ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+                #     ARM_TENANT_ID: $(ARM_TENANT_ID)
 
   # ===================================================================
-  # Stage 3 — Deploy Workflows
+  # Stage 3 — Deploy Workflows (DISABLED — now handled by terraform_data)
+  # Workflow zip deploy is triggered automatically during terraform apply
+  # when workflow file content changes (hash-based, no-op if unchanged).
   # ===================================================================
-  - stage: DeployWorkflows
-    displayName: 'Deploy Workflows'
-    dependsOn: Apply
-    variables:
-      LOGIC_APP_NAME: $[ stageDependencies.Apply.ApplyTerraform.outputs['ApplyTerraform.tfOutputs.LOGIC_APP_NAME'] ]
-      RESOURCE_GROUP_NAME: $[ stageDependencies.Apply.ApplyTerraform.outputs['ApplyTerraform.tfOutputs.RESOURCE_GROUP_NAME'] ]
-    jobs:
-      - deployment: DeployWorkflows
-        displayName: 'Sync Connections & Zip Deploy'
-        environment: '$(environment)'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-
-                - template: templates/deploy-workflows.yml
-                  parameters:
-                    logicAppName: '$(LOGIC_APP_NAME)'
-                    resourceGroupName: '$(RESOURCE_GROUP_NAME)'
-                    workflowsPath: '$(workflowsPath)'
+  # - stage: DeployWorkflows
+  #   displayName: 'Deploy Workflows'
+  #   dependsOn: Apply
+  #   variables:
+  #     LOGIC_APP_NAME: $[ stageDependencies.Apply.ApplyTerraform.outputs['ApplyTerraform.tfOutputs.LOGIC_APP_NAME'] ]
+  #     RESOURCE_GROUP_NAME: $[ stageDependencies.Apply.ApplyTerraform.outputs['ApplyTerraform.tfOutputs.RESOURCE_GROUP_NAME'] ]
+  #   jobs:
+  #     - deployment: DeployWorkflows
+  #       displayName: 'Sync Connections & Zip Deploy'
+  #       environment: '$(environment)'
+  #       strategy:
+  #         runOnce:
+  #           deploy:
+  #             steps:
+  #               - checkout: self
+  #               - template: templates/deploy-workflows.yml
+  #                 parameters:
+  #                   logicAppName: '$(LOGIC_APP_NAME)'
+  #                   resourceGroupName: '$(RESOURCE_GROUP_NAME)'
+  #                   workflowsPath: '$(workflowsPath)'

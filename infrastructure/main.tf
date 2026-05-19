@@ -2,10 +2,14 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
     }
   }
-  #   backend "azurerm" {}
+  # backend "azurerm" {}
 }
 
 provider "azurerm" {
@@ -149,4 +153,33 @@ resource "azurerm_role_assignment" "azuremonitorlogs_reader" {
   scope                = data.azurerm_log_analytics_workspace.target.id
   role_definition_name = "Log Analytics Reader"
   principal_id         = azurerm_logic_app_standard.this.identity[0].principal_id
+}
+
+# ---------------------------------------------------------------------------
+# Workflow Zip Deploy
+#
+# archive_file zips the workflows directory at plan time and computes a
+# SHA256 hash. terraform_data only redeploys when the hash changes, so a
+# pure infra-only apply (no workflow file changes) is a no-op here.
+# ---------------------------------------------------------------------------
+data "archive_file" "workflows" {
+  type        = "zip"
+  source_dir  = "${path.module}/../workflows"
+  output_path = "${path.module}/../workflows.zip"
+  excludes = [
+    "local.settings.json",
+    "workflow-designtime",
+  ]
+}
+
+resource "terraform_data" "deploy_workflows" {
+  triggers_replace = {
+    workflows_hash = data.archive_file.workflows.output_sha256
+  }
+
+  depends_on = [azurerm_logic_app_standard.this]
+
+  provisioner "local-exec" {
+    command = "az functionapp deployment source config-zip --name ${azurerm_logic_app_standard.this.name} --resource-group ${azurerm_resource_group.this.name} --src ${data.archive_file.workflows.output_path}"
+  }
 }

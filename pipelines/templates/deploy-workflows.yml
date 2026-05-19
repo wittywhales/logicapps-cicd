@@ -1,50 +1,56 @@
 # ---------------------------------------------------------------------------
 # Reusable template: Zip-deploy workflows to Logic App Standard
+#
+# DISABLED — workflow zip deploy is now handled by terraform_data in
+# infrastructure/main.tf using archive_file. Zip deploy triggers
+# automatically during terraform apply when workflow content changes.
+# This template is kept for reference / fallback.
 # ---------------------------------------------------------------------------
-parameters:
-  - name: logicAppName
-    type: string
-  - name: resourceGroupName
-    type: string
-  - name: azureSubscription
-    type: string
-    default: 'TF-SPN-ADO'
-  - name: workflowsPath
-    type: string
-    default: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/workflows'
 
-steps:
-  # ----------------------------------------------------------------
-  # Step 1 — Zip the workflows directory
-  # ----------------------------------------------------------------
-  - task: AzureCLI@2
-    displayName: 'Package Workflows'
-    inputs:
-      azureSubscription: ${{ parameters.azureSubscription }}
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        set -euo pipefail
-        WORKFLOWS_DIR="${{ parameters.workflowsPath }}"
-        ZIP_PATH="$(Build.ArtifactStagingDirectory)/workflows.zip"
+# parameters:
+#   - name: logicAppName
+#     type: string
+#   - name: resourceGroupName
+#     type: string
+#   - name: azureSubscription
+#     type: string
+#     default: 'TF-SPN-ADO'
+#   - name: workflowsPath
+#     type: string
+#     default: '$(System.DefaultWorkingDirectory)/Terraform/logicapps/workflows'
 
-        echo "--- Creating workflow zip from $WORKFLOWS_DIR ---"
-        cd "$WORKFLOWS_DIR"
-        zip -r "$ZIP_PATH" . \
-          -x "local.settings.json" \
-          -x ".vscode/*" \
-          -x "workflow-designtime/*" \
-          -x "*.bak"
-        echo "✓ Created $ZIP_PATH"
+# steps:
+#   # ----------------------------------------------------------------
+#   # Step 1 — Zip the workflows directory
+#   # ----------------------------------------------------------------
+#   - task: AzureCLI@2
+#     displayName: 'Package Workflows'
+#     inputs:
+#       azureSubscription: ${{ parameters.azureSubscription }}
+#       scriptType: 'bash'
+#       scriptLocation: 'inlineScript'
+#       inlineScript: |
+#         set -euo pipefail
+#         WORKFLOWS_DIR="${{ parameters.workflowsPath }}"
+#         ZIP_PATH="$(Build.ArtifactStagingDirectory)/workflows.zip"
 
-  # ----------------------------------------------------------------
-  # Step 2 — Deploy via zip deploy (same mechanism as Azure Functions)
-  # ----------------------------------------------------------------
-  - task: AzureFunctionApp@1
-    displayName: 'Deploy Workflows to Logic App'
-    inputs:
-      azureSubscription: ${{ parameters.azureSubscription }}
-      appType: 'functionApp'
-      appName: ${{ parameters.logicAppName }}
-      package: '$(Build.ArtifactStagingDirectory)/workflows.zip'
-      deploymentMethod: 'zipDeploy'
+#         echo "--- Creating workflow zip from $WORKFLOWS_DIR ---"
+#         cd "$WORKFLOWS_DIR"
+#         zip -r "$ZIP_PATH" . \
+#           -x "local.settings.json" \
+#           -x ".vscode/*" \
+#           -x "workflow-designtime/*" \
+#           -x "*.bak"
+#         echo "✓ Created $ZIP_PATH"
+
+#   # ----------------------------------------------------------------
+#   # Step 2 — Deploy via zip deploy (same mechanism as Azure Functions)
+#   # ----------------------------------------------------------------
+#   - task: AzureFunctionApp@1
+#     displayName: 'Deploy Workflows to Logic App'
+#     inputs:
+#       azureSubscription: ${{ parameters.azureSubscription }}
+#       appType: 'functionApp'
+#       appName: ${{ parameters.logicAppName }}
+#       package: '$(Build.ArtifactStagingDirectory)/workflows.zip'
+#       deploymentMethod: 'zipDeploy'
